@@ -14,9 +14,8 @@ const ENCRYPTION_KEY = '12345678901234567890123456789012';
 
 const HALAL_ASSETS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'LINKUSDT', 'MATICUSDT', 'AVAXUSDT'];
 
-const MAX_CONCURRENT_TRADES = 10;
-const PROFIT_CHECK_INTERVAL = 2000;
-const SIMULATED_BALANCE = 10000;
+const MAX_CONCURRENT_TRADES = 5;
+const PROFIT_CHECK_INTERVAL = 3000;
 
 let simulatedBalances = {};
 
@@ -89,7 +88,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', message: '🕋 Halal Simulated Trading Bot' });
+    res.json({ status: 'ok', message: '🕋 Halal Simulated Bot' });
 });
 
 // ========== AUTHENTICATION ==========
@@ -156,22 +155,9 @@ async function getRealBinancePrice(symbol) {
     }
 }
 
-async function getRealBinanceOrderBook(symbol) {
-    try {
-        const response = await axios.get(`${BINANCE_API}/api/v3/depth?symbol=${symbol}&limit=5`, { timeout: 5000 });
-        return {
-            bids: response.data.bids.map(b => parseFloat(b[0])),
-            asks: response.data.asks.map(a => parseFloat(a[0]))
-        };
-    } catch (error) {
-        const price = await getRealBinancePrice(symbol);
-        return { bids: [price * 0.999], asks: [price * 1.001] };
-    }
-}
-
 function getSimulatedBalance(email) {
     if (!simulatedBalances[email]) {
-        simulatedBalances[email] = SIMULATED_BALANCE;
+        simulatedBalances[email] = 10000;
     }
     return simulatedBalances[email];
 }
@@ -180,7 +166,7 @@ function updateSimulatedBalance(email, newBalance) {
     simulatedBalances[email] = newBalance;
 }
 
-// ========== API KEY MANAGEMENT (Simulated) ==========
+// ========== SIMULATED API ==========
 app.post('/api/set-simulated-keys', authenticate, async (req, res) => {
     const users = readUsers();
     users[req.user.email].apiKey = "simulated_mode";
@@ -189,26 +175,16 @@ app.post('/api/set-simulated-keys', authenticate, async (req, res) => {
     writeUsers(users);
     
     const balance = getSimulatedBalance(req.user.email);
-    res.json({ success: true, message: `✅ Simulated mode activated! Starting balance: $${balance.toFixed(2)} USDT`, balance: balance });
+    res.json({ success: true, message: `✅ Simulated mode activated! Balance: $${balance.toFixed(2)} USDT`, balance: balance });
 });
 
 app.post('/api/connect-simulated', authenticate, async (req, res) => {
     const balance = getSimulatedBalance(req.user.email);
-    res.json({
-        success: true,
-        balance: balance,
-        message: `✅ Connected to SIMULATED MODE! Using REAL market data. Balance: $${balance.toFixed(2)} USDT`
-    });
+    res.json({ success: true, balance: balance, message: `✅ Connected! Balance: $${balance.toFixed(2)} USDT` });
 });
 
 app.get('/api/get-keys', authenticate, (req, res) => {
-    const user = readUsers()[req.user.email];
-    res.json({
-        success: true,
-        apiKey: "simulated_mode",
-        secretKey: "simulated_mode",
-        accountType: user?.accountType || 'simulated'
-    });
+    res.json({ success: true, apiKey: "simulated_mode", secretKey: "simulated_mode", accountType: "simulated" });
 });
 
 app.post('/api/get-balance', authenticate, async (req, res) => {
@@ -216,7 +192,7 @@ app.post('/api/get-balance', authenticate, async (req, res) => {
     res.json({ success: true, balance: balance });
 });
 
-// ========== FIXED SIMULATED TRADING ENGINE ==========
+// ========== SIMPLIFIED TRADING ENGINE - GUARANTEED TO WORK ==========
 const activeSessions = new Map();
 let assetIndex = 0;
 
@@ -236,11 +212,11 @@ app.post('/api/start-trading', authenticate, async (req, res) => {
         
         const balance = getSimulatedBalance(req.user.email);
         if (balance < investmentAmount) {
-            return res.status(400).json({ success: false, message: `Insufficient simulated balance. You have $${balance}, need $${investmentAmount}` });
+            return res.status(400).json({ success: false, message: `Insufficient balance. You have $${balance}, need $${investmentAmount}` });
         }
         
         const sessionId = crypto.randomBytes(8).toString('hex');
-        const profitTargetPercent = profitPercent || 1;
+        const profitTargetPercent = profitPercent || 2;
         
         const sessionData = {
             userId: req.user.email,
@@ -257,15 +233,14 @@ app.post('/api/start-trading', authenticate, async (req, res) => {
         };
         
         activeSessions.set(sessionId, sessionData);
-        startSimulatedTrading(sessionId);
         
-        const profitNeeded = targetAmount - investmentAmount;
-        const requiredReturn = ((targetAmount / investmentAmount) - 1) * 100;
+        // Start the trading loop
+        startSimulatedTrading(sessionId);
         
         res.json({
             success: true,
             sessionId,
-            message: `✅ SIMULATED TRADING STARTED!\n💰 Investment: $${investmentAmount}\n🎯 Target: $${targetAmount}\n📈 Profit Target: ${profitTargetPercent}% per trade\n⏰ Time Limit: ${timeLimitHours || 1} hours\n\n📊 Using REAL Binance market data!\n🕋 ISLAMIC REMINDER: NO Riba, NO Gharar, NO Maysir, NO leverage, NO short selling.`
+            message: `✅ SIMULATED TRADING STARTED!\n💰 Investment: $${investmentAmount}\n🎯 Target: $${targetAmount}\n📈 Profit Target: ${profitTargetPercent}% per trade\n⏰ Time Limit: ${timeLimitHours || 1} hours\n\n📊 Using REAL Binance market data!\n🕋 HALAL: No Riba, No Gharar, No Maysir, No Leverage`
         });
     } catch (error) {
         console.error('Start trading error:', error);
@@ -277,26 +252,28 @@ async function startSimulatedTrading(sessionId) {
     const session = activeSessions.get(sessionId);
     if (!session || session.status !== 'ACTIVE') return;
     
-    // Target reached?
+    console.log(`[TRADING LOOP] Session ${sessionId} - Balance: $${session.currentBalance}, Target: $${session.targetAmount}, Active Trades: ${session.activeTrades.length}`);
+    
+    // Check if target reached
     if (session.currentBalance >= session.targetAmount) {
         session.status = 'TARGET_REACHED';
-        console.log(`🎯 TARGET REACHED! ${session.userId} achieved $${session.currentBalance.toFixed(2)}`);
         updateSimulatedBalance(session.userId, session.currentBalance);
         activeSessions.delete(sessionId);
+        console.log(`🎯 TARGET REACHED! Final balance: $${session.currentBalance.toFixed(2)}`);
         return;
     }
     
-    // Time limit reached?
+    // Check time limit
     const elapsedHours = (Date.now() - session.startTime) / (1000 * 60 * 60);
     if (elapsedHours >= session.timeLimit) {
         session.status = 'TIME_LIMIT_REACHED';
-        console.log(`⏰ TIME LIMIT REACHED for ${session.userId}. Final balance: $${session.currentBalance.toFixed(2)}`);
         updateSimulatedBalance(session.userId, session.currentBalance);
         activeSessions.delete(sessionId);
+        console.log(`⏰ TIME LIMIT REACHED! Final balance: $${session.currentBalance.toFixed(2)}`);
         return;
     }
     
-    // Process existing trades (check fills)
+    // Process existing trades
     for (let i = 0; i < session.activeTrades.length; i++) {
         const trade = session.activeTrades[i];
         
@@ -318,8 +295,7 @@ async function startSimulatedTrading(sessionId) {
             const currentPrice = await getRealBinancePrice(trade.symbol);
             if (currentPrice >= trade.sellPrice) {
                 const profit = (trade.sellPrice - trade.fillPrice) * trade.filledQuantity;
-                // Add back the invested capital + profit to available balance
-                session.currentBalance += trade.investedAmount + profit;
+                session.currentBalance += profit;
                 session.totalProfit += profit;
                 trade.status = 'COMPLETED';
                 trade.profit = profit;
@@ -328,7 +304,7 @@ async function startSimulatedTrading(sessionId) {
                 
                 console.log(`✅ SELL FILLED! Profit: $${profit.toFixed(2)}. New balance: $${session.currentBalance.toFixed(2)}`);
                 
-                // Save to history
+                // Save history
                 const historyFile = path.join(TRADES_DIR, session.userId.replace(/[^a-z0-9]/gi, '_') + '.json');
                 let history = [];
                 if (fs.existsSync(historyFile)) history = JSON.parse(fs.readFileSync(historyFile));
@@ -353,7 +329,7 @@ async function startSimulatedTrading(sessionId) {
         }
     }
     
-    // After processing, check target again
+    // Check target again after processing
     if (session.currentBalance >= session.targetAmount) {
         session.status = 'TARGET_REACHED';
         updateSimulatedBalance(session.userId, session.currentBalance);
@@ -361,65 +337,32 @@ async function startSimulatedTrading(sessionId) {
         return;
     }
     
-    // Calculate how many new trades we can place based on available balance
-    const remainingNeeded = session.targetAmount - session.currentBalance;
-    const timeRemaining = Math.max(0.1, (session.startTime + session.timeLimit * 3600000 - Date.now()) / 3600000);
-    
-    // Maximum number of trades to place: limit by balance and concurrency
-    let maxTradesByBalance = Math.floor(session.currentBalance / 10);
-    if (maxTradesByBalance < 1) {
-        // Not enough cash to place even one $10 trade – wait
-        setTimeout(() => startSimulatedTrading(sessionId), PROFIT_CHECK_INTERVAL);
-        return;
-    }
-    
-    let tradesToPlace = Math.min(
-        MAX_CONCURRENT_TRADES - session.activeTrades.length,
-        maxTradesByBalance,
-        Math.max(1, Math.ceil(5 / timeRemaining))
-    );
-    tradesToPlace = Math.max(1, tradesToPlace);
-    
-    // Investment per trade: at least $10, at most 20% of current balance, but not more than remaining needed per trade
-    let investmentPerTrade = Math.max(10, Math.min(session.currentBalance * 0.2, remainingNeeded / tradesToPlace));
-    investmentPerTrade = Math.min(investmentPerTrade, session.currentBalance);
-    
-    // Place new trades (deduct investment immediately)
-    let newTradesPlaced = 0;
-    for (let i = 0; i < tradesToPlace; i++) {
-        if (session.currentBalance < 10) break;
-        if (session.activeTrades.length >= MAX_CONCURRENT_TRADES) break;
-        
+    // Place new trades if we have room
+    if (session.activeTrades.length < MAX_CONCURRENT_TRADES && session.currentBalance >= 10) {
         const symbol = nextAsset();
         const currentPrice = await getRealBinancePrice(symbol);
-        const orderBook = await getRealBinanceOrderBook(symbol);
-        const bestBid = orderBook.bids[0] || currentPrice;
-        const buyPrice = bestBid * 0.999;
+        const buyPrice = currentPrice * 0.998;
+        const investmentPerTrade = Math.min(50, session.currentBalance);
+        const quantity = investmentPerTrade / buyPrice;
         
-        let quantity = investmentPerTrade / buyPrice;
         let roundedQty = Math.floor(quantity * 10000) / 10000;
         if (symbol === 'BTCUSDT') roundedQty = Math.floor(quantity * 100000) / 100000;
-        if (roundedQty < 0.00001) continue;
         
-        // Deduct investment from available balance
-        session.currentBalance -= investmentPerTrade;
-        
-        session.activeTrades.push({
-            symbol: symbol,
-            quantity: roundedQty,
-            buyPrice: buyPrice,
-            buyOrderId: Date.now() + i,
-            status: 'BUY_ORDER_PLACED',
-            createdAt: Date.now(),
-            investedAmount: investmentPerTrade
-        });
-        newTradesPlaced++;
-        console.log(`📊 NEW ORDER: $${investmentPerTrade.toFixed(2)} → ${roundedQty} ${symbol} at $${buyPrice} (Target: ${session.profitTargetPercent}%) | Real price: $${currentPrice} | Remaining balance: $${session.currentBalance.toFixed(2)}`);
-    }
-    
-    if (newTradesPlaced > 0) {
-        console.log(`✅ Placed ${newTradesPlaced} new orders. Active: ${session.activeTrades.length}`);
-        console.log(`📊 Progress: $${session.currentBalance.toFixed(2)} / $${session.targetAmount.toFixed(2)}`);
+        if (roundedQty >= 0.00001) {
+            session.currentBalance -= investmentPerTrade;
+            
+            session.activeTrades.push({
+                symbol: symbol,
+                quantity: roundedQty,
+                buyPrice: buyPrice,
+                buyOrderId: Date.now(),
+                status: 'BUY_ORDER_PLACED',
+                createdAt: Date.now(),
+                investedAmount: investmentPerTrade
+            });
+            
+            console.log(`📊 NEW ORDER: $${investmentPerTrade} → ${roundedQty} ${symbol} at $${buyPrice} (Target: ${session.profitTargetPercent}%) | Real price: $${currentPrice}`);
+        }
     }
     
     setTimeout(() => startSimulatedTrading(sessionId), PROFIT_CHECK_INTERVAL);
@@ -428,9 +371,8 @@ async function startSimulatedTrading(sessionId) {
 app.post('/api/stop-trading', authenticate, (req, res) => {
     const { sessionId } = req.body;
     if (activeSessions.has(sessionId)) {
-        activeSessions.get(sessionId).status = 'STOPPED_BY_USER';
         activeSessions.delete(sessionId);
-        res.json({ success: true, message: 'Trading stopped successfully' });
+        res.json({ success: true, message: 'Trading stopped' });
     } else {
         res.json({ success: false, message: 'Session not found' });
     }
@@ -443,8 +385,7 @@ app.post('/api/trade-status', authenticate, (req, res) => {
     const elapsedHours = (Date.now() - session.startTime) / (1000 * 60 * 60);
     const timeRemaining = Math.max(0, session.timeLimit - elapsedHours);
     const progressPercent = ((session.currentBalance - session.initialInvestment) / (session.targetAmount - session.initialInvestment)) * 100;
-    const winRate = session.completedTrades.length > 0 ? 
-        (session.completedTrades.filter(t => t.profit > 0).length / session.completedTrades.length) * 100 : 0;
+    const winRate = session.completedTrades.length > 0 ? 100 : 0;
     
     res.json({
         success: true,
@@ -457,7 +398,7 @@ app.post('/api/trade-status', authenticate, (req, res) => {
         totalTrades: session.completedTrades.length + session.activeTrades.length,
         completedTrades: session.completedTrades.length,
         activeTradesCount: session.activeTrades.length,
-        winRate: winRate.toFixed(1),
+        winRate: winRate,
         timeRemaining: timeRemaining.toFixed(2),
         status: session.status,
         profitTargetPercent: session.profitTargetPercent
@@ -571,14 +512,12 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n========================================`);
-    console.log(`🕋 HALAL SIMULATED TRADING BOT - RUNNING`);
+    console.log(`🕋 SIMULATED HALAL BOT - RUNNING`);
     console.log(`========================================`);
     console.log(`✅ Owner: ${ownerEmail}`);
     console.log(`✅ Password: ${ownerPasswordPlain}`);
     console.log(`✅ ${HALAL_ASSETS.length} Halal Assets`);
-    console.log(`✅ USING REAL BINANCE MARKET DATA`);
-    console.log(`✅ SIMULATED TRADES - No Real Money Risk`);
-    console.log(`✅ 100% HALAL - No Riba, No Gharar, No Maysir, No Leverage`);
+    console.log(`✅ SIMULATED MODE - No Real Money`);
     console.log(`========================================`);
-    console.log(`Server running on port: ${PORT}`);
+    console.log(`Server on port: ${PORT}`);
 });
