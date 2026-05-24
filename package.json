@@ -1,0 +1,16 @@
+{
+  "name": "halal-simulated-bot",
+  "version": "3.0.0",
+  "description": "Simulated Halal Trading Bot - Real Market Data",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
